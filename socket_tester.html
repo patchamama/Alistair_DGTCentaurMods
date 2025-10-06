@@ -382,12 +382,18 @@
         })
 
         socket.on('web_message', (data) => {
-          if (data.centaur_screen && data.centaur_screen === {}) return // Ignore frequent updates
+          if (
+            data.centaur_screen &&
+            Object.keys(data.centaur_screen).length === 0
+          )
+            return // Ignore frequent updates
           log(`↘️ RECV on 'web_message': ${JSON.stringify(data, null, 2)}`)
           if (data.fen) {
             board.position(data.fen, false)
             analyzePosition(data.fen)
-            updateTopMovesUI(data.fen)
+            setTimeout(() => updateTopMovesUI(data.fen), 2000) // Fix for responsive resizing
+          } else if (data.turn_caption) {
+            sendSocketMessage('request', { fen: true, pgn: true })
           }
           if (data.popup) alert(`ℹ️ Server Popup: ${data.popup}`)
           if (data.update_menu)
@@ -506,14 +512,22 @@
               const lineNum = parseInt(multipvMatch[1])
 
               const pvMatch = message.match(/ pv (.+)/)
-              const firstMoveUCI = pvMatch ? pvMatch[1].split(' ')[0] : null
+              // const firstMoveUCI = pvMatch ? pvMatch[1].split(' ')[0] : null
+              const firstMoveUCI = pvMatch
+                ? pvMatch[1].split(' ').slice(0, 5).join(' ')
+                : null
+              //console.log({
+              //  pvMoves: pvMatch[1].split(' ').slice(0, 5).join(' '),
+              //  firstMoveUCI,
+              //})
 
               const cpMatch = message.match(/score cp (-?\d+)/)
               if (cpMatch) {
                 let score = parseInt(cpMatch[1], 10)
-                if (turn === 'b') {
-                  score = -score
-                }
+                console.log({ score, turn, fen })
+                //if (turn === 'b') {
+                //  score = -score
+                //}
                 topLines[lineNum] = {
                   score: score,
                   type: 'cp',
@@ -543,7 +557,7 @@
             }
           }
           engine.postMessage('uci')
-          engine.postMessage('setoption name MultiPV value 3')
+          engine.postMessage('setoption name MultiPV value 5')
           engine.postMessage('isready')
           engine.postMessage('ucinewgame')
           log('Stockfish ready.')
@@ -554,7 +568,7 @@
 
       function analyzePosition(fen) {
         if (!engine) return
-        topLines = {}
+        // topLines = {}
         updateTopMovesUI()
         updateEvaluation('cp', 0)
         engine.postMessage(`position fen ${fen}`)
@@ -605,59 +619,57 @@
         })
       }
 
-      async function updateTopMovesUI(fullFen = null) {
+      async function updateTopMovesUI() {
         if (!topMovesElement) return
 
-        if (!fullFen) {
-          try {
-            fullFen = await requestFenFromServer()
-          } catch (error) {
-            log(`ERROR: Could not get FEN from server: ${error.message}`)
-            return
-          }
+        let fullFen
+        try {
+          fullFen = await requestFenFromServer()
+        } catch (error) {
+          log(`ERROR: Could not get FEN from server: ${error.message}`)
+          return
         }
 
-        // console.log({ fullFen, topLines, primero: topLines['1']?.uci })
-        // console.log('proximo', topLines, '1' in topLines)
-
-        const chess = new Chess(fullFen)
         let html = ''
 
-        for (let i = 1; i <= 3; i++) {
+        for (let i = 1; i <= 5; i++) {
           const line = topLines[i]
-          // console.log('Line ' + i, line)
           if (!line || !line.uci) continue
 
-          // Convertir UCI a formato que chess.js entiende
-          const from = line.uci.substring(0, 2)
-          const to = line.uci.substring(2, 4)
-          const promotion = line.uci.length > 4 ? line.uci[4] : undefined
+          // Crear una nueva instancia de Chess para cada línea
+          const chess = new Chess(fullFen)
 
-          // Crear objeto de movimiento para chess.js
-          const moveObj = {
-            from: from,
-            to: to,
+          // Separar los movimientos UCI (están separados por espacios)
+          const uciMoves = line.uci.split(' ')
+          const sanMoves = []
+
+          // Convertir cada movimiento UCI a SAN
+          for (const uciMove of uciMoves) {
+            if (!uciMove) continue
+
+            const from = uciMove.substring(0, 2)
+            const to = uciMove.substring(2, 4)
+            const promotion = uciMove.length > 4 ? uciMove[4] : undefined
+
+            const moveObj = { from, to }
+            if (promotion) {
+              moveObj.promotion = promotion
+            }
+
+            const move = chess.move(moveObj)
+
+            if (move) {
+              sanMoves.push(move.san)
+              // NO hacemos undo aquí, queremos seguir la secuencia
+            } else {
+              log(
+                `DEBUG: chess.js failed to parse move: ${uciMove} on FEN: ${chess.fen()}, Turn: ${chess.turn()}`
+              )
+              //break // Si falla un movimiento, dejamos de procesar esta línea
+            }
           }
 
-          if (promotion) {
-            moveObj.promotion = promotion
-          }
-
-          const move = chess.move(moveObj)
-
-          let san = '--'
-          if (move) {
-            console.log('Move found: ' + move.san)
-            san = move.san
-            chess.undo() // Deshacer para mantener la posición original
-          } else {
-            log(
-              `DEBUG: chess.js failed to parse move: ${
-                line.uci
-              } on FEN: ${fullFen}, Turn: ${chess.turn()}`
-            )
-          }
-
+          // Formatear el score
           let scoreText = ''
           if (line.type === 'cp') {
             scoreText = (line.score / 100.0).toFixed(2)
@@ -665,7 +677,9 @@
             scoreText = `Mate in ${Math.abs(line.score)}`
           }
 
-          html += `${i}. ${san.padEnd(7)} (${scoreText})\n`
+          // Construir la línea completa
+          const sanLine = sanMoves.join(' ') || '--'
+          html += `${i}. ${sanLine} (${scoreText})\n`
         }
         topMovesElement.innerText = html
       }
