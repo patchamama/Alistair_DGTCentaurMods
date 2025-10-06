@@ -1,53 +1,57 @@
 # Documentación de la API de WebSockets del DGTCentaur
 
-La comunicación en tiempo real entre el frontend (la página web) y el backend (el servidor en el Centaur) se realiza a través de **WebSockets**, utilizando la librería `Flask-SocketIO`.
-
-La comunicación se basa en **eventos** sobre una conexión persistente. En lugar de hacer peticiones a endpoints HTTP, el cliente y el servidor emiten y escuchan mensajes en diferentes "canales" o "eventos".
+La comunicación en tiempo real entre el frontend y el backend se realiza a través de WebSockets, basado en eventos sobre una conexión persistente.
 
 ## A. Eventos que el Servidor Escucha (Cliente -> Servidor)
 
-Estos son los mensajes que puedes enviar al servidor para que realice acciones.
+Estos son los mensajes que el cliente puede enviar al servidor.
 
 ### **Canal Principal: `'request'`**
 
-Este es el canal más potente, usado para solicitar datos o ejecutar comandos en el sistema.
+Usado para solicitar datos o ejecutar comandos en el sistema.
 
-| Acción                  | Payload (Ejemplo en JSON)                                                                            | Descripción                                                                                                                                                                 |
-| :---------------------- | :--------------------------------------------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Obtener Logs**        | `{ "sys": "log_events" }`                                                                            | Pide las últimas 500 líneas del log. El servidor responde en `'web_message'` con `{"log_events": "..."}`.                                                                   |
-| **Reiniciar Servicio**  | `{ "sys": "restart_service" }`                                                                       | Reinicia el servicio principal de DGTCentaurMods.                                                                                                                           |
-| **Reiniciar Web**       | `{ "sys": "restart_web_service" }`                                                                   | Reinicia este mismo servidor web.                                                                                                                                           |
-| **Apagar**              | `{ "sys": "shutdown" }`                                                                              | Apaga completamente el DGT Centaur.                                                                                                                                         |
-| **Leer Archivo**        | `{ "read": { "id": "plugin", "file": "HandAndBrain" } }`                                             | Lee el contenido de un archivo. `id` puede ser `plugin`, `uci`, `famous_pgn`, `conf`. `file` es el nombre sin extensión. Responde en `'web_message'` con `{"editor": ...}`. |
-| **Escribir Archivo**    | `{ "write": { "id": "plugin", "file": "HandAndBrain", "new_file": "HandAndBrain", "text": "..." } }` | Escribe contenido en un archivo. `text` es el nuevo contenido.                                                                                                              |
-| **Eliminar Archivo**    | `{ "write": { "id": "famous_pgn", "file": "MyGame", "new_file": "__delete__" } }`                    | Elimina un archivo (solo permitido para ciertos tipos como PGNs).                                                                                                           |
-| **Obtener Partidas**    | `{ "data": "previous_games" }`                                                                       | Pide la lista de todas las partidas guardadas en la base de datos. Responde en `'web_message'` con `{"previous_games": [...]}`.                                             |
-| **Obtener Movimientos** | `{ "data": "game_moves", "id": 123 }`                                                                | Pide la lista de movimientos para una partida específica por su `id`. Responde en `'web_message'` con `{"game_moves": "..."}`.                                              |
-| **Eliminar Partida**    | `{ "data": "remove_game", "id": 123 }`                                                               | Elimina una partida de la base de datos por su `id`.                                                                                                                        |
-| **Ejecutar Script**     | `{ "script": "update" }`                                                                             | Ejecuta un script de la carpeta `/scripts` por su nombre. Responde en `'web_message'` con `{"script_output": "..."}`.                                                       |
+| Acción                        | Payload (Ejemplo en JSON)                                                                   | Descripción                                                                                                                                                           |
+| :---------------------------- | :------------------------------------------------------------------------------------------ | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Pedir Menú Web**            | `{"web_menu": true}`                                                                      | Solicita la estructura completa de menús para la interfaz web. El servidor responde con un evento `update_menu`.                                                    |
+| **Pedir Datos Específicos**   | `{"data": "previous_games"}` <br> `{"data": "sounds_settings"}`                     | Pide un conjunto de datos concreto. Valores conocidos: `previous_games`, `sounds_settings`, `game_moves`.                                                              |
+| **Ejecutar Módulo/Comando**   | `{"execute": "uci_module.py white stockfish \"1400\""}`                               | Ejecuta un módulo del sistema (`.py` de la carpeta `modules`) con argumentos. Se usa para iniciar partidas, etc.                                                    |
+| **Ejecutar Plugin**           | `{"plugin_execute": "RandomBot"}`                                                       | Ejecuta un plugin de la carpeta `plugins` por su nombre de clase.                                                                                                     |
+| **Ejecutar Script Vivo**      | `{"live_script": "print('Hola')"}`                                                     | Ejecuta un fragmento de código Python directamente en el servidor.                                                                                                    |
+| **Simular Botón Físico**      | `{"web_button": "OK"}`                                                                  | Simula la pulsación de un botón físico del tablero. Valores: `OK`, `BACK`, `UP`, `DOWN`, `PLAY`.                                                                       |
+| **Enviar Jugada (source/target)** | `{"web_move": {"source": "e2", "target": "e4"}}`                                     | Informa al servidor de una jugada realizada en la interfaz web para su validación. Es el método preferido para enviar jugadas desde una UI.                           |
+| **Comandos de Sistema**       | `{"sys": "restart_service"}` <br> `{"sys": "shutdown"}` <br> `{"sys": "log_events"}` | Ejecuta un comando de sistema. Valores: `restart_service`, `restart_web_service`, `shutdown`, `log_events`, `homescreen`.                                            |
+| **Leer Archivo**              | `{"read": {"id": "uci", "file": "stockfish"}}`                                      | Lee el contenido de un archivo de configuración. `id` puede ser `plugin`, `uci`, `famous_pgn`, `conf`.                                                               |
+| **Escribir Archivo**          | `{"write": {"id": "uci", "file": "stockfish", "text": "..."}}`                  | Escribe contenido en un archivo de configuración, permitiendo cambiar la fuerza de un motor, por ejemplo.                                                           |
 
 ### **Canal Secundario: `'web_message'`**
 
-Usado principalmente para la comunicación entre diferentes tableros (chat) y para enviar comandos directos al tablero.
+Usado para comunicación más ligera, chat y comandos directos al tablero.
 
-| Acción                  | Payload (Ejemplo en JSON)                                                 | Descripción                                                                         |
-| :---------------------- | :------------------------------------------------------------------------ | :---------------------------------------------------------------------------------- |
-| **Comando de Bot**      | `{ "bot_message": ["@username", "MyUser"] }`                              | Envía un comando al bot interno (ej: para cambiar el nombre de usuario de Lichess). |
-| **Enviar Jugada (FEN)** | `{ "fen": "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1" }` | Envía una nueva posición FEN al servidor para actualizar el estado del juego.       |
-| **Encender LED**        | `{ "leds": "e4" }` o `{ "leds": "e2e4" }`                                 | Enciende los LEDs de las casillas indicadas.                                        |
-| **Apagar LEDs**         | `{ "leds_off": "" }`                                                      | Apaga todos los LEDs del tablero.                                                   |
-| **Mostrar Flash**       | `{ "flash": "e2e4" }`                                                     | Hace un parpadeo rápido en las casillas de un movimiento.                           |
+| Acción                  | Payload (Ejemplo en JSON)                                                                   | Descripción                                                                                                                                                         |
+| :---------------------- | :------------------------------------------------------------------------------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Enviar Mensaje de Chat**  | `{"chat_message": {"author": "Mandy", "message": "Hola"}}`                           | Envía un mensaje al sistema de chat.                                                                                                                                |
+| **Enviar Jugada (FEN)**     | `{"fen": "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1"}`                  | Envía una nueva posición FEN al servidor. Útil para sincronizar tableros, aunque `web_move` es preferido para jugadas.                                             |
+| **Control de LEDs**         | `{"leds": "e2e4"}` <br> `{"leds_off": ""}` <br> `{"flash": "d4d5"}`                | Permite encender, apagar o hacer parpadear los LEDs de las casillas.                                                                                                |
+| **Reproducir Sonido**       | `{"sound": "move"}`                                                                     | Pide al servidor que reproduzca un sonido predefinido. La lista de sonidos se puede obtener con `{"data": "sounds_settings"}`.                                     |
+
+---
 
 ## B. Eventos que el Servidor Emite (Servidor -> Cliente)
 
-Estos son los mensajes que recibirás del servidor. La mayoría llegan por el canal `'web_message'`.
+Estos son los mensajes que el cliente puede recibir del servidor, la mayoría por el canal `web_message`.
 
-| Campo en el JSON | Ejemplo                                               | Descripción                                                        |
-| :--------------- | :---------------------------------------------------- | :----------------------------------------------------------------- |
-| `fen`            | `{"fen": "rnbqkb1r/..."}`                             | Contiene la posición actual del tablero en notación FEN.           |
-| `log_events`     | `{"log_events": "..."}`                               | La respuesta a la petición de logs.                                |
-| `editor`         | `{"editor": {"text": "...", "file": "..."}}`          | La respuesta a una petición de lectura de archivo.                 |
-| `popup`          | `{"popup": "Action completed!"}`                      | Un mensaje corto para mostrar al usuario en una ventana emergente. |
-| `previous_games` | `{"previous_games": [{"id":1, "date":"..."}, ...]}`   | La lista de partidas guardadas.                                    |
-| `script_output`  | `{"script_output": "..."}`                            | El resultado de la ejecución de un script.                         |
-| `chat_message`   | `{"chat_message": {"author":"...", "message":"..."}}` | Un mensaje de chat.                                                |
+| Campo en el JSON      | Ejemplo de Payload                                            | Descripción                                                                                                                     |
+| :-------------------- | :------------------------------------------------------------ | :------------------------------------------------------------------------------------------------------------------------------ |
+| `update_menu`         | `{"update_menu": [{"id": "play", "label": "Play", ...}]}` | Envía la estructura completa de menús dinámicos, incluyendo la lista de motores y plugins.                                    |
+| `sounds_settings`     | `{"sounds_settings": {"move": "Move sound", ...}}`         | Envía un diccionario con los sonidos disponibles y sus descripciones.                                                           |
+| `fen`                 | `{"fen": "rnbqkb1r/..."}`                                 | Contiene la posición actual del tablero en notación FEN. Se envía tras una jugada o al conectar.                                |
+| `uci_move`            | `{"uci_move": "e2e4"}`                                    | Informa de la última jugada realizada en formato UCI.                                                                           |
+| `computer_uci_move`   | `{"computer_uci_move": "d2d4"}`                           | Informa de la jugada realizada por el motor.                                                                                    |
+| `tip_uci_moves`       | `{"tip_uci_moves": ["g1f3", "d2d4"]}`                   | Envía una lista de jugadas sugeridas.                                                                                           |
+| `checkers`            | `{"checkers": ["f7"], "kings": ["e8", "e1"]}`        | Indica qué piezas están dando jaque y la posición de los reyes.                                                                 |
+| `centaur_screen`      | `{"centaur_screen": [80, 78, ... ]}`                         | Envía el buffer de la pantalla e-Paper del Centaur como un array de bytes para ser renderizado en la web.                       |
+| `loading_screen`      | `{"loading_screen": true}`                                  | Indica al cliente que muestre una pantalla de carga, por ejemplo, mientras se inicia un plugin.                                |
+| `popup`               | `{"popup": "Action completed!"}`                          | Pide al cliente que muestre un mensaje corto en una ventana emergente.                                                          |
+| `log_events`          | `{"log_events": "..."}`                                   | La respuesta a la petición de logs.                                                                                             |
+| `editor`              | `{"editor": {"text": "..."}}`                           | La respuesta a una petición de lectura de archivo, para ser mostrada en un editor.                                              |
+| `previous_games`      | `{"previous_games": [...]}`                                 | La lista de partidas guardadas.                                                                                                 |

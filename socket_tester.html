@@ -10,58 +10,107 @@
       crossorigin="anonymous"
     />
     <style>
+      html, body {
+        height: 100%;
+        margin: 0;
+        padding: 10px;
+        box-sizing: border-box;
+        background-color: #f8f9fa;
+      }
       body {
         font-family: Arial, sans-serif;
         display: flex;
-        padding: 10px;
         gap: 20px;
       }
-      .main-controls,
-      .logs {
+      .column {
         display: flex;
         flex-direction: column;
-        gap: 10px;
+        gap: 15px;
+      }
+      .main-controls {
+        width: 400px;
+        flex-shrink: 0;
+      }
+      .actions-column {
+        width: 400px;
+        flex-shrink: 0;
+      }
+      .log-column {
+        flex-grow: 1;
+        height: calc(100vh - 20px); /* Full viewport height minus body padding */
       }
       #board {
         width: 400px;
       }
       #log {
-        width: 500px;
-        height: 400px;
+        width: 100%;
+        flex-grow: 1;
         border: 1px solid #ccc;
         padding: 5px;
         overflow-y: scroll;
         white-space: pre-wrap;
         font-family: monospace;
         font-size: 12px;
+        box-sizing: border-box;
       }
       #status {
         font-weight: bold;
       }
       .action-group,
-      .connection-group {
+      .connection-group,
+      .engine-evaluation {
         display: flex;
         flex-direction: column;
         border: 1px solid #ddd;
         padding: 10px;
         border-radius: 5px;
-        gap: 5px;
+        gap: 8px;
+        background-color: #fff;
       }
       .connection-group div {
         display: flex;
         align-items: center;
         gap: 10px;
       }
-      select,
-      button,
-      input {
+      select, button, input, textarea {
         padding: 8px;
         font-size: 14px;
+        width: 100%;
+        box-sizing: border-box;
+      }
+      .eval-bar-container {
+        width: 100%;
+        height: 20px;
+        background-color: #404040;
+        border-radius: 3px;
+        overflow: hidden;
+      }
+      .eval-bar {
+        height: 100%;
+        width: 50%;
+        background-color: #f0f0f0;
+        transition: width 0.5s ease;
+      }
+      #eval-score {
+        margin-top: 5px;
+        font-weight: bold;
+        text-align: center;
+      }
+      .advanced-actions button {
+          background-color: #e7f3ff;
+          border: 1px solid #007bff;
+          color: #007bff;
+      }
+      h2, h3 {
+          margin-top: 0;
+          margin-bottom: 5px;
+          border-bottom: 1px solid #eee;
+          padding-bottom: 5px;
       }
     </style>
   </head>
   <body>
-    <div class="main-controls">
+    <div class="column main-controls">
       <h2>DGT Centaur Socket Tester</h2>
       <div class="connection-group">
         <div>
@@ -72,18 +121,45 @@
         <div id="status">Status: Disconnected</div>
       </div>
       <div id="board"></div>
-      <p>Drag pieces to propose a move.</p>
+      <p>Drag pieces to send a `web_move` event.</p>
+      <div class="engine-evaluation">
+        <h3>Stockfish Evaluation</h3>
+        <div class="eval-bar-container">
+          <div id="eval-bar" class="eval-bar"></div>
+        </div>
+        <div id="eval-score">Score: 0.00</div>
+      </div>
     </div>
 
-    <div class="logs">
+    <div class="column actions-column">
       <div class="action-group">
-        <h3>Send Event to Server</h3>
-        <select id="event-selector" size="10"></select>
-        <button id="send-button">Send Message</button>
+        <h3>Manual Event</h3>
+        <label for="channel-input">Channel:</label>
+        <input type="text" id="channel-input" placeholder="request or web_message" />
+        <label for="message-payload">Message Payload (JSON):</label>
+        <textarea id="message-payload" rows="6"></textarea>
+        <button id="send-button">Send Manual Event</button>
       </div>
 
-      <h3>Logs and Messages from Server</h3>
-      <textarea id="log" readonly></textarea>
+      <div class="action-group">
+        <h3>Basic Examples</h3>
+        <label for="event-selector">Load example into manual event fields:</label>
+        <select id="event-selector"></select>
+      </div>
+
+      <div class="action-group advanced-actions">
+        <h3>Advanced Actions</h3>
+        <button id="get-menu-btn">Request Web Menu</button>
+        <button id="get-sounds-btn">List Sounds</button>
+        <button id="run-plugin-btn">Run RandomBot Plugin</button>
+        <button id="press-ok-btn">Simulate OK Button</button>
+        <button id="set-elo-btn">Set Stockfish ELO to 1500</button>
+      </div>
+    </div>
+
+    <div class="column log-column">
+        <h3>Logs & Messages</h3>
+        <textarea id="log" readonly></textarea>
     </div>
 
     <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
@@ -98,162 +174,243 @@
       integrity="sha384-8Vi8VHwn3vjQ9eUHUxex3JSN/NFqUg3QbPyX8kWyb93+8AC/pPWTzj+nHtbC5bxD"
       crossorigin="anonymous"
     ></script>
+    <script src="DGTCentaurMods/web/client/public/stockfish/stockfish.js"></script>
 
     <script>
-      // Get HTML elements
-      const logElement = document.getElementById('log')
-      const statusElement = document.getElementById('status')
-      const sendButton = document.getElementById('send-button')
-      const eventSelector = document.getElementById('event-selector')
-      const ipInput = document.getElementById('ip-input')
-      const connectButton = document.getElementById('connect-button')
+      // HTML elements
+      const logElement = document.getElementById('log');
+      const statusElement = document.getElementById('status');
+      const sendButton = document.getElementById('send-button');
+      const eventSelector = document.getElementById('event-selector');
+      const ipInput = document.getElementById('ip-input');
+      const connectButton = document.getElementById('connect-button');
+      const channelInput = document.getElementById('channel-input');
+      const messagePayload = document.getElementById('message-payload');
+      const evalBar = document.getElementById('eval-bar');
+      const evalScore = document.getElementById('eval-score');
 
-      let board = null
-      let socket = null
+      let board = null;
+      let socket = null;
+      let engine = null;
 
-      // Define the list of testable events
       const eventOptions = {
-        '--- System ---': { sys: 'log_events' },
-        'Restart Main Service': { sys: 'restart_service' },
-        'Restart Web Service': { sys: 'restart_web_service' },
-        'Shutdown Centaur': { sys: 'shutdown' },
-        '--- Files ---': { read: { id: 'plugin', file: 'HandAndBrain' } },
-        'Read config.ini': { read: { id: 'conf', file: 'centaur' } },
-        '--- Database ---': { data: 'previous_games' },
-        'Get moves for game ID 1': { data: 'game_moves', id: 1 },
-        'Delete game ID 1': { data: 'remove_game', id: 1 },
-        '--- Scripts ---': { script: 'update' },
-        '--- Board (via web_message) ---': { leds: 'e4' },
-        'Turn on LEDs (e2e4)': { leds: 'e2e4' },
-        'Turn off all LEDs': { leds_off: '' },
-        'Flash on d4d5': { flash: 'd4d5' },
-      }
+        '--- System ---': null,
+        'Get Last Log Events': { channel: 'request', payload: { sys: 'log_events' } },
+        'Restart CORE Service': { channel: 'request', payload: { sys: 'restart_service' } },
+        'Restart WEB Service': { channel: 'request', payload: { sys: 'restart_web_service' } },
+        'Go to Homescreen': { channel: 'request', payload: { sys: 'homescreen' } },
+        'Shutdown Centaur': { channel: 'request', payload: { sys: 'shutdown' } },
+        '--- Board / UI ---': null,
+        'Send Move (e2e4)': { channel: 'request', payload: { web_move: { source: 'e2', target: 'e4' } } },
+        'Turn on LEDs (e2e4)': { channel: 'web_message', payload: { leds: 'e2e4' } },
+        'Flash LEDs (d4d5)': { channel: 'web_message', payload: { flash: 'd4d5' } },
+        'Turn off all LEDs': { channel: 'web_message', payload: { leds_off: '' } },
+        'Simulate OK Button': { channel: 'request', payload: { web_button: 'OK' } },
+        'Simulate Back Button': { channel: 'request', payload: { web_button: 'BACK' } },
+        '--- Data Requests ---': null,
+        'Request Web Menu': { channel: 'request', payload: { web_menu: true } },
+        'List Available Sounds': { channel: 'request', payload: { data: 'sounds_settings' } },
+        'List Previous Games': { channel: 'request', payload: { data: 'previous_games' } },
+        'Get Moves for Game ID 1': { channel: 'request', payload: { data: 'game_moves', id: 1 } },
+        '--- Modules / Plugins ---': null,
+        'Run Lichess Module': { channel: 'request', payload: { execute: 'lichess_module.py' } },
+        'Run 1-vs-1 Module': { channel: 'request', payload: { execute: '1vs1_module.py' } },
+        'Run RandomBot Plugin': { channel: 'request', payload: { plugin_execute: 'RandomBot' } },
+        'Play vs Stockfish (1400 ELO)': { channel: 'request', payload: { execute: 'uci_module.py white stockfish "1400"' } },
+        '--- Files & Scripts ---': null,
+        'Read config.ini': { channel: 'request', payload: { read: { id: 'conf', file: 'centaur' } } },
+        'Read Stockfish UCI file': { channel: 'request', payload: { read: { id: 'uci', file: 'stockfish' } } },
+        'Execute Live Script': { channel: 'request', payload: { live_script: 'SCREEN.home_screen("Live Script!")' } },
+        '--- Chat ---': null,
+        'Send a Chat Message': { channel: 'web_message', payload: { chat_message: { author: 'Tester', message: 'Hello from the tester!' } } },
+      };
 
-      // Fills the dropdown with event options
       function populateEvents() {
-        eventSelector.innerHTML = '' // Clear old options
-        for (const [name, payload] of Object.entries(eventOptions)) {
-          const option = document.createElement('option')
-          option.text = name
-          // The channel is determined if the name includes '--- Board'
-          const channel = name.includes('--- Board') ? 'web_message' : 'request'
-          option.value = JSON.stringify({ channel, payload })
-          eventSelector.add(option)
+        eventSelector.innerHTML = '';
+        const placeholder = document.createElement('option');
+        placeholder.text = 'Select an example...';
+        placeholder.disabled = true;
+        placeholder.selected = true;
+        eventSelector.add(placeholder);
+
+        for (const name of Object.keys(eventOptions)) {
+          const option = document.createElement('option');
+          option.text = name;
+          option.value = name;
+          if (eventOptions[name] === null) {
+            option.disabled = true;
+            option.style.fontWeight = 'bold';
+            option.style.backgroundColor = '#eee';
+          }
+          eventSelector.add(option);
         }
       }
 
-      // Appends a message to the log text area
       function log(message) {
-        logElement.value += `[${new Date().toLocaleTimeString()}] ${message}\n`
-        logElement.scrollTop = logElement.scrollHeight
+        logElement.value += `[${new Date().toLocaleTimeString()}] ${message}\n`;
+        logElement.scrollTop = logElement.scrollHeight;
       }
 
-      // Sets up all the event listeners for the socket object
+      function sendSocketMessage(channel, payload) {
+        if (!socket || !socket.connected) {
+          alert('Not connected. Please connect first.');
+          return;
+        }
+        log(`↗️ SEND on '${channel}': ${JSON.stringify(payload, null, 2)}`);
+        socket.emit(channel, payload);
+      }
+
       function setupSocketListeners() {
         socket.on('connect', () => {
-          statusElement.textContent = 'Status: Connected'
-          statusElement.style.color = 'green'
-          log(`Connected to server at ${ipInput.value}.`)
-          connectButton.textContent = 'Disconnect'
-          socket.emit('request', {
-            fen: true,
-            pgn: true,
-            uci_move: true,
-            web_menu: true,
-          })
-        })
+          statusElement.textContent = 'Status: Connected';
+          statusElement.style.color = 'green';
+          log(`✅ Connected to server at ${ipInput.value}.`);
+          connectButton.textContent = 'Disconnect';
+          sendSocketMessage('request', { fen: true, pgn: true, uci_move: true, web_menu: true });
+        });
 
         socket.on('disconnect', () => {
-          statusElement.textContent = 'Status: Disconnected'
-          statusElement.style.color = 'red'
-          log('Disconnected from the server.')
-          connectButton.textContent = 'Connect'
-        })
+          statusElement.textContent = 'Status: Disconnected';
+          statusElement.style.color = 'red';
+          log('Disconnected from the server.');
+          connectButton.textContent = 'Connect';
+        });
 
-        // Listener for the main message channel from the server
         socket.on('web_message', (data) => {
-          log(
-            `Message received on 'web_message': ${JSON.stringify(
-              data,
-              null,
-              2
-            )}`
-          )
-          if (data.fen) board.position(data.fen, false) // Update board position
-          if (data.log_events)
-            log(`--- SYSTEM LOGS ---
-                ${data.log_events}
-                --- END LOGS ---`)
-          if (data.popup) alert(`Server Popup: ${data.popup}`)
-          if (data.editor)
-            log(`--- FILE CONTENT: ${data.editor.file} ---
-                ${data.editor.text}
-                --- END FILE ---`)
-        })
+          log(`↘️ RECV on 'web_message': ${JSON.stringify(data, null, 2)}`);
+          if (data.fen) {
+            board.position(data.fen, false);
+            analyzePosition(data.fen);
+          }
+          if (data.popup) alert(`ℹ️ Server Popup: ${data.popup}`);
+          if (data.update_menu) log(`ℹ️ Web menu received. See full object in console.`);
+          if (data.sounds_settings) log(`ℹ️ Available sounds: ${Object.keys(data.sounds_settings).join(', ')}`);
+        });
 
-        // Listener for the request channel (less common for server-to-client)
         socket.on('request', (data) => {
-          log(`Message received on 'request': ${JSON.stringify(data, null, 2)}`)
-        })
+          log(`↘️ RECV on 'request': ${JSON.stringify(data, null, 2)}`);
+        });
       }
 
-      // Handles the connect/disconnect button click
       connectButton.addEventListener('click', () => {
         if (socket && socket.connected) {
-          socket.disconnect()
+          socket.disconnect();
         } else {
-          const centaurIP = ipInput.value.trim()
+          const centaurIP = ipInput.value.trim();
           if (!centaurIP) {
-            alert('Please enter an IP address.')
-            return
+            alert('Please enter an IP address.');
+            return;
           }
-          // Connect to the server using the provided IP
-          socket = io(`http://${centaurIP}`, { reconnection: false })
-          setupSocketListeners()
+          socket = io(`http://${centaurIP}`, { reconnection: false });
+          setupSocketListeners();
         }
-      })
+      });
 
-      // Handles the send message button click
       sendButton.addEventListener('click', () => {
-        if (!socket || !socket.connected) {
-          alert('Not connected. Please connect first.')
-          return
+        const channel = channelInput.value.trim();
+        const payloadString = messagePayload.value;
+        if (!channel || !payloadString) {
+          alert('Channel and Message Payload must be provided.');
+          return;
         }
         try {
-          const selected = JSON.parse(eventSelector.value)
-          log(
-            `Sending on channel '${selected.channel}': ${JSON.stringify(
-              selected.payload
-            )}`
-          )
-          socket.emit(selected.channel, selected.payload)
+          const payload = JSON.parse(payloadString);
+          sendSocketMessage(channel, payload);
         } catch (e) {
-          log(`Error sending message: ${e.message}`)
-          alert('Please select a valid option from the list.')
+          alert(`Invalid JSON in payload: ${e.message}`);
         }
-      })
+      });
 
-      // Callback for when a piece is dropped on the board
-      function onDrop(source, target) {
-        if (!socket || !socket.connected) {
-          alert('You must be connected to send moves.')
-          return 'snapback' // Revert the move
+      eventSelector.addEventListener('change', (e) => {
+        const eventName = e.target.value;
+        const eventData = eventOptions[eventName];
+        if (eventData) {
+          channelInput.value = eventData.channel;
+          messagePayload.value = JSON.stringify(eventData.payload, null, 2);
         }
-        // When a move is made, send the new board position (FEN) to the server
-        const fen_msg = { fen: board.fen() }
-        log(`Sending new FEN on 'web_message': ${fen_msg.fen}`)
-        socket.emit('web_message', fen_msg)
+      });
+
+      function onDrop(source, target) {
+        const move = { source, target };
+        sendSocketMessage('request', { web_move: move });
+        // The server will validate and send back a new FEN if the move is legal.
+        // We return 'snapback' to wait for the server's authority.
+        return 'snapback';
+      }
+
+      // Advanced Actions
+      document.getElementById('get-menu-btn').addEventListener('click', () => sendSocketMessage('request', { web_menu: true }));
+      document.getElementById('get-sounds-btn').addEventListener('click', () => sendSocketMessage('request', { data: 'sounds_settings' }));
+      document.getElementById('run-plugin-btn').addEventListener('click', () => sendSocketMessage('request', { plugin_execute: 'RandomBot' }));
+      document.getElementById('press-ok-btn').addEventListener('click', () => sendSocketMessage('request', { web_button: 'OK' }));
+      document.getElementById('set-elo-btn').addEventListener('click', async () => {
+        log('Attempting to set Stockfish ELO to 1500...');
+        sendSocketMessage('request', { 
+            write: { 
+                id: 'uci', 
+                file: 'stockfish', 
+                text: '[1500]\nSkill Level = 5\n'
+            } 
+        });
+      });
+
+      // Stockfish Integration
+      function initStockfish() {
+        log('Initializing Stockfish...');
+        try {
+          engine = new Worker('DGTCentaurMods/web/client/public/stockfish/stockfish.js');
+          engine.onmessage = function(event) {
+              const message = event.data;
+              if (message.startsWith('info depth')) {
+                  const scoreMatch = message.match(/score (cp|mate) (-?\d+)/);
+                  if (scoreMatch) {
+                      updateEvaluation(scoreMatch[1], parseInt(scoreMatch[2], 10));
+                  }
+              }
+          };
+          engine.postMessage('uci');
+          engine.postMessage('isready');
+          engine.postMessage('ucinewgame');
+          log('Stockfish ready.');
+        } catch (e) {
+          log(`Error initializing Stockfish: ${e.message}`);
+        }
+      }
+
+      function analyzePosition(fen) {
+          if (!engine) return;
+          engine.postMessage(`position fen ${fen}`);
+          engine.postMessage('go depth 15');
+      }
+
+      function updateEvaluation(type, value) {
+          let scoreText = '';
+          let evalPercentage = 50;
+          const maxEval = 800;
+
+          if (type === 'cp') {
+              const pawns = value / 100.0;
+              scoreText = `Score: ${pawns.toFixed(2)}`;
+              const clampedValue = Math.max(-maxEval, Math.min(maxEval, value));
+              evalPercentage = 50 + (clampedValue / maxEval) * 50;
+          } else if (type === 'mate') {
+              scoreText = `Mate in ${Math.abs(value)}`;
+              evalPercentage = value > 0 ? 100 : 0;
+          }
+          evalScore.textContent = scoreText;
+          evalBar.style.width = `${evalPercentage}%`;
       }
 
       // --- Initialization ---
       board = Chessboard('board', {
         draggable: true,
-        pieceTheme:
-          'DGTCentaurMods/opt/DGTCentaurMods/web/static/chessboardjs/img/chesspieces/wikipedia/{piece}.png',
+        pieceTheme: 'DGTCentaurMods/opt/DGTCentaurMods/web/static/chessboardjs/img/chesspieces/wikipedia/{piece}.png',
         position: 'start',
         onDrop: onDrop,
-      })
-      populateEvents()
+      });
+      populateEvents();
+      initStockfish();
+      analyzePosition('start');
     </script>
   </body>
 </html>
