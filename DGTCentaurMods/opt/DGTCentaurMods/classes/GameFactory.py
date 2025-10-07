@@ -532,6 +532,54 @@ class Engine():
             if "web_menu" in data:
                 self.initialize_web_menu()
                 del data["web_menu"]
+                
+            if "beep" in data:
+                CENTAUR_BOARD.beep(Enums.Sound.CORRECT_MOVE)
+                response["beep"] = "Beep sound"
+                socket.send_web_message(response)
+                del data["beep"]
+                
+            if "led" in data:
+                fieldChar = data["led"]
+                if type(fieldChar) is bool and fieldChar == False:
+                    CENTAUR_BOARD.leds_off()
+                    response["led"] =  "LEDs off"
+                    socket.send_web_message(response)
+                    del data["led"]
+                    return
+                field_index = common.Converters.to_square_index(fieldChar, Enums.SquareType.ORIGIN)
+                CENTAUR_BOARD.led(field_index)
+                response["led"] =  "LED on " + fieldChar
+                socket.send_web_message(response)
+                del data["led"]
+                
+            if "led_array" in data:
+                fieldChar = data["led_array"]
+                # if type(fieldChar) is bool and fieldChar == False:
+                #     CENTAUR_BOARD.leds_off()
+                #     response["led"] =  "LEDs off"
+                #     socket.send_web_message(response)
+                #     del data["led"]
+                #     return
+                ## Show the diagonals, every 8 squares beginning from a1 and h1
+                #led_squares = [i for i in range(0,64) if i % 9 == 0 or (i != 0 and i % 7 == 0)]
+                # for square in range(0,64):
+                #     if business_board_state[square] != board_state[square]:
+                #         invalid_squares.append(square)
+                led_squares = [i for i in range(0,64) if i % 9 == 0 or i == 0]
+
+                if len(led_squares):
+                    CENTAUR_BOARD.led_array(led_squares, no_field_rotation=False)
+                del data["led_array"]
+
+            if "flash" in data:
+                uci_move = data["flash"]
+                from_num = common.Converters.to_square_index(uci_move, Enums.SquareType.ORIGIN)
+                to_num = common.Converters.to_square_index(uci_move, Enums.SquareType.TARGET)
+                CENTAUR_BOARD.led_from_to(from_num,to_num)
+                response["flash"] =  "flash on " + uci_move
+                socket.send_web_message(response)
+                del data["flash"]
 
             if "web_move" in data:
                 # A move has been triggered from web UI

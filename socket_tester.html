@@ -249,12 +249,24 @@
           channel: 'request',
           payload: { web_move: { source: 'e2', target: 'e4' } },
         },
-        'Turn on LEDs (e2e4)': {
-          channel: 'web_message',
-          payload: { leds: 'e2e4' },
+        'Turn on LEDs (e2)': {
+          channel: 'request',
+          payload: { led: 'e2' },
+        },
+        'Led Array Diagonal': {
+          channel: 'request',
+          payload: { led_array: { diagonal: true } },
+        },
+        'Turn LEDs off': {
+          channel: 'request',
+          payload: { led: false },
+        },
+        'Beep Sound': {
+          channel: 'request',
+          payload: { beep: '' },
         },
         'Flash LEDs (d4d5)': {
-          channel: 'web_message',
+          channel: 'request',
           payload: { flash: 'd4d5' },
         },
         'Turn off all LEDs': {
