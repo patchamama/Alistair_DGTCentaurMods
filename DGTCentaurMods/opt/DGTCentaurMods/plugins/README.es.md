@@ -7,6 +7,7 @@
 4. [API de Centaur](#api-de-centaur)
 5. [Ejemplos Completos](#ejemplos-completos)
 6. [Mejores Prácticas](#mejores-prácticas)
+7. [Pruebas de tu Plugin](#pruebas-de-tu-plugin)
 
 ---
 
@@ -835,6 +836,118 @@ Incluir siempre el header de licencia GPL v3 al inicio del archivo:
 - Documentar el propósito del plugin en el docstring de la clase
 - Comentar lógica compleja
 - Incluir ejemplos de uso si el plugin tiene configuración especial
+
+---
+
+## Pruebas de tu Plugin
+
+Se proporciona un script de pruebas completo para validar que tu plugin sigue todas las convenciones y mejores prácticas requeridas.
+
+### Script de Prueba: `test_plugins.py`
+
+El script verifica:
+- ✓ Extensión de archivo correcta (.py)
+- ✓ Presencia del encabezado de licencia GPL
+- ✓ Sintaxis Python válida
+- ✓ Imports requeridos (chess, Plugin, Centaur, Enums)
+- ✓ Nombre de clase coincide con nombre de archivo
+- ✓ Clase hereda de Plugin
+- ✓ Método __init__ apropiado con llamada a super()
+- ✓ Implementación de métodos callback
+- ✓ Presencia de docstring en la clase
+
+### Ejecutar las Pruebas
+
+#### Probar Todos los Plugins
+
+Para probar todos los plugins en el directorio de plugins:
+
+```bash
+cd DGTCentaurMods/opt/DGTCentaurMods/plugins/
+python test_plugins.py
+```
+
+#### Probar un Plugin Específico
+
+Para probar un solo plugin:
+
+```bash
+python test_plugins.py --plugin MiPlugin.py
+```
+
+#### Probar Múltiples Plugins Específicos
+
+```bash
+python test_plugins.py --plugin RandomBot.py --plugin Squiz.py
+```
+
+#### Probar Plugins en un Directorio Diferente
+
+```bash
+python test_plugins.py --dir /ruta/a/plugins
+```
+
+### Ejemplo de Salida
+
+```
+============================================================
+Validating plugin: RandomBot
+============================================================
+
+────────────────────────────────────────────────────────────
+
+✓ PASSED CHECKS:
+  ✓ File extension is correct (.py)
+  ✓ GPL license header found
+  ✓ Python syntax is valid
+  ✓ Required import found: chess
+  ✓ Required import found: Plugin
+  ✓ Required import found: Centaur
+  ✓ Required import found: Enums
+  ✓ Class name matches filename: RandomBot
+  ✓ Class inherits from Plugin
+  ✓ Callbacks implemented: key_callback, event_callback, on_start_callback, splash_screen
+
+⚠ WARNINGS:
+  ⚠ No __init__ method found
+
+────────────────────────────────────────────────────────────
+
+✓ Plugin 'RandomBot' is VALID!
+  (1 warning(s))
+
+============================================================
+SUMMARY
+============================================================
+
+Total plugins tested: 1
+✓ Valid: 1
+✗ Invalid: 0
+```
+
+### Interpretación de Resultados
+
+**✓ PASSED CHECKS**: Todas las validaciones que pasaron exitosamente
+
+**⚠ WARNINGS**: Problemas no críticos que deberían abordarse pero no impiden que el plugin funcione
+
+**✗ ERRORS**: Problemas críticos que deben corregirse para que el plugin funcione correctamente
+
+### Flujo de Trabajo Recomendado
+
+1. **Desarrolla tu plugin** siguiendo los ejemplos y mejores prácticas
+2. **Ejecuta las pruebas** antes de enviar o desplegar
+3. **Corrige los errores** reportados por el test
+4. **Atiende las advertencias** para mejorar la calidad del código
+5. **Prueba manualmente** en el tablero DGT Centaur
+
+### Pruebas Continuas
+
+Se recomienda ejecutar el conjunto de pruebas:
+- Después de crear un nuevo plugin
+- Después de modificar plugins existentes
+- Antes de hacer commit de cambios al control de versiones
+- Como parte de tu pipeline CI/CD (si aplica)
 
 ---
 

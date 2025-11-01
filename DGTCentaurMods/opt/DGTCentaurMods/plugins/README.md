@@ -9,6 +9,7 @@
 4. [Centaur API](#centaur-api)
 5. [Complete Examples](#complete-examples)
 6. [Best Practices](#best-practices)
+7. [Testing Your Plugin](#testing-your-plugin)
 
 ---
 
@@ -837,6 +838,118 @@ Always include the GPL v3 license header at the beginning of the file:
 - Document the plugin's purpose in the class docstring
 - Comment complex logic
 - Include usage examples if the plugin has special configuration
+
+---
+
+## Testing Your Plugin
+
+A comprehensive test script is provided to validate your plugin follows all required conventions and best practices.
+
+### Test Script: `test_plugins.py`
+
+The test script checks for:
+- ✓ Correct file extension (.py)
+- ✓ GPL license header presence
+- ✓ Valid Python syntax
+- ✓ Required imports (chess, Plugin, Centaur, Enums)
+- ✓ Class name matches filename
+- ✓ Class inherits from Plugin
+- ✓ Proper __init__ method with super() call
+- ✓ Callback methods implementation
+- ✓ Class docstring presence
+
+### Running the Tests
+
+#### Test All Plugins
+
+To test all plugins in the plugins directory:
+
+```bash
+cd DGTCentaurMods/opt/DGTCentaurMods/plugins/
+python test_plugins.py
+```
+
+#### Test a Specific Plugin
+
+To test a single plugin:
+
+```bash
+python test_plugins.py --plugin MyPlugin.py
+```
+
+#### Test Multiple Specific Plugins
+
+```bash
+python test_plugins.py --plugin RandomBot.py --plugin Squiz.py
+```
+
+#### Test Plugins in a Different Directory
+
+```bash
+python test_plugins.py --dir /path/to/plugins
+```
+
+### Example Output
+
+```
+============================================================
+Validating plugin: RandomBot
+============================================================
+
+────────────────────────────────────────────────────────────
+
+✓ PASSED CHECKS:
+  ✓ File extension is correct (.py)
+  ✓ GPL license header found
+  ✓ Python syntax is valid
+  ✓ Required import found: chess
+  ✓ Required import found: Plugin
+  ✓ Required import found: Centaur
+  ✓ Required import found: Enums
+  ✓ Class name matches filename: RandomBot
+  ✓ Class inherits from Plugin
+  ✓ Callbacks implemented: key_callback, event_callback, on_start_callback, splash_screen
+
+⚠ WARNINGS:
+  ⚠ No __init__ method found
+
+────────────────────────────────────────────────────────────
+
+✓ Plugin 'RandomBot' is VALID!
+  (1 warning(s))
+
+============================================================
+SUMMARY
+============================================================
+
+Total plugins tested: 1
+✓ Valid: 1
+✗ Invalid: 0
+```
+
+### Interpreting Results
+
+**✓ PASSED CHECKS**: All validations that passed successfully
+
+**⚠ WARNINGS**: Non-critical issues that should be addressed but don't prevent the plugin from working
+
+**✗ ERRORS**: Critical issues that must be fixed for the plugin to work properly
+
+### Recommended Workflow
+
+1. **Develop your plugin** following the examples and best practices
+2. **Run the test** before submitting or deploying
+3. **Fix any errors** reported by the test
+4. **Address warnings** to improve code quality
+5. **Test manually** on the DGT Centaur board
+
+### Continuous Testing
+
+It's recommended to run the test suite:
+- After creating a new plugin
+- After modifying existing plugins
+- Before committing changes to version control
+- As part of your CI/CD pipeline (if applicable)
 
 ---
 
